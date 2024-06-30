@@ -1,0 +1,306 @@
+## --------------------------------------------------------------------------------------------------------------------------------------------------------------------
+vehicles <- read.csv("~/Downloads/vehicles.csv")
+tail(vehicles)
+
+
+## --------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# check number of rows and columns
+rows <- nrow(vehicles)
+col <- ncol(vehicles)
+print(paste("rows",rows))
+print(paste("col",col))
+
+
+## --------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# Checking the null values of each feature by plotting
+library(ggplot2)
+
+feature_miss_count <- colSums(is.na(vehicles) | vehicles == "")
+print(data.frame(feature_miss_count))
+
+
+scaling <- 1000  # 1 unit represents 1,000 missing values
+scaled_miss <- feature_miss_count / scaling
+
+missing_df <- data.frame(
+  Feature = names(scaled_miss),
+  Scaled_Missing_Count = scaled_miss
+)
+
+missing_df <- missing_df[order(-missing_df$Scaled_Missing_Count), ]
+
+ggplot(missing_df, aes(x = Scaled_Missing_Count, y = Feature)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+    geom_text(aes(label = Scaled_Missing_Count), vjust = 0.5, color = "black",size=2.6,hjust = - 0.1) +
+  labs(
+    title = "Count of Missing Values by Feature",
+    x = "Count of Missing Values (Scaled: 1 unit = 1,000)",
+    y = "Feature"
+  ) +
+  theme_minimal()
+
+
+
+## --------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# Step2 : Dropping unwanted columns
+
+# We can see that few columns are unwanted for our use case. So we are dropping them
+# columns are 'county','url', 'region_url', 'VIN', 'image_url','region','description','model'
+
+vehicles <- vehicles[, -c(2,3,4,8,15,20,21,22)]
+
+
+## --------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# Step3 : Filling missing values
+
+# If there is any feature with numeric as its datatype, we are replacing with mean of that feature
+# Else if there is any feature with character as its datatype, we are replacing with mode of that feature
+
+for (i in names(vehicles)[!names(vehicles) %in% c('year','manufacturer', 'paint_color')]) {
+  if (class(vehicles[[i]]) == "numeric" || class(vehicles[[i]]) == "integer") {
+    non_empty_values <- as.numeric(vehicles[[i]][vehicles[[i]] != ""])
+    mean_val <- mean(non_empty_values, na.rm = TRUE)
+    vehicles[[i]][is.na(vehicles[[i]]) | vehicles[[i]] == ""] <- mean_val
+  }
+  if (class(vehicles[[i]]) == "character") {
+    non_empty_values <- vehicles[[i]][vehicles[[i]] != ""]
+    mode_val <- names(sort(table(non_empty_values), decreasing = TRUE))[1]  # Find the mode
+    vehicles[[i]][is.na(vehicles[[i]]) | vehicles[[i]] == ""] <- mode_val
+  }
+}
+
+
+# Handling missing values for specific columns (i.e year,manufacturer,paint_color)
+vehicles$year[is.na(vehicles$year) | vehicles$year == ""] <- names(sort(table(vehicles$year), decreasing = TRUE))[1]
+vehicles$manufacturer[is.na(vehicles$manufacturer) | vehicles$manufacturer == ""] <- "Unknown"
+vehicles$paint_color[is.na(vehicles$paint_color) | vehicles$paint_color == ""] <- "Unknown"
+
+
+## --------------------------------------------------------------------------------------------------------------------------------------------------------------------
+head(vehicles)
+
+
+## --------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# Box plots before and after cleaning the data
+plot_boxplots <- function(data) {
+  numeric_cols <- sapply(data, is.numeric)
+  par(mfrow = c(3, 3), plt = c(0.05, 1, 0.05, 1))  # Adjust rows, columns, and margins as needed
+  for (col in names(data)[numeric_cols]) {
+    boxplot(data[[col]], main = col)
+    legend("topright", legend = col, bty = "n")
+  }
+}
+
+# Plot boxplots for all numeric features
+plot_boxplots(vehicles)
+
+
+
+# Function to remove outliers across all features
+remove_outliers_all <- function(data) {
+  for (col in names(data)) {
+    if (is.numeric(data[[col]])) {
+      q1 <- quantile(data[[col]], 0.25)
+      q3 <- quantile(data[[col]], 0.75)
+      iqr <- q3 - q1
+      lower_bound <- q1 - 1.5 * iqr
+      upper_bound <- q3 + 1.5 * iqr
+      data <- data[data[[col]] >= lower_bound & data[[col]] <= upper_bound, ]
+    }
+  }
+  return(data)
+}
+
+
+# Remove outliers across all features
+vehicles_no_outliers <- remove_outliers_all(vehicles)
+
+# Plot boxplots again to check for outliers removal
+plot_boxplots(vehicles_no_outliers)
+
+
+
+## --------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# Correlation plot to know about the feature importance
+
+# Remove outliers from the "price" column
+vehicles <- remove_outliers_all(vehicles)
+
+# Now, proceed with the label encoding and correlation plot generation as before
+library(corrplot)
+
+label_encode_df <- function(dataframe) {
+  for (col in names(dataframe)) {
+    if (is.factor(dataframe[[col]]) || is.character(dataframe[[col]])) {
+      dataframe[[col]] <- as.integer(factor(dataframe[[col]]))
+    }
+  }
+  return(dataframe)
+}
+
+# Apply label encoding
+df_encoded <- label_encode_df(vehicles)
+
+# Plot correlation matrix
+par(mfrow = c(1, 1), mar = c(5, 5, 5, 5))
+options(repr.plot.width = 15, repr.plot.height = 15)
+correlation_matrix <- cor(df_encoded)
+corrplot(correlation_matrix, method = "color",
+         order = "hclust", tl.col = "black", tl.srt = 45,
+         addCoef.col = "black", number.cex = 0.45, mar = c(0, 0, 0, 0), addgrid.col = "gray")
+
+
+
+## --------------------------------------------------------------------------------------------------------------------------------------------------------------------
+head(vehicles)
+
+
+## --------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# Step4 : Checking duplicated records
+
+# Checking duplicated rows
+duplicates <- vehicles[duplicated(vehicles), ]
+
+# Printing duplicated rows if any
+print(duplicates)
+
+
+## --------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# Step5 : Transforming "Odometer" feature into categories of (low,medium,high)
+
+quan25 <- quantile(vehicles$odometer,0.25)
+quan50 <- quantile(vehicles$odometer,0.50)
+
+a <- function(val){if(val< quan25){
+  return('Low')
+} else if(val> quan25 & val< quan50){
+  return('Medium')
+} else{
+  return('High')
+}}
+
+vehicles$odometer_status <- sapply(vehicles$odometer,a)
+
+
+## --------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# Step6 : Transforming "Postingdate" feature by removing the timeframe and just keeping the date as date alone is required for prediction
+b <- function(val){
+  substring(val,1,10)
+}
+vehicles$posting_date <- sapply(vehicles$posting_date,b)
+
+
+## --------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# Step7 : Transforming "cylinders" feature by removing the non-numeric characters and considering only numeric value as an integer. Also if there is no numeric in any of the record we replaced it with most occuranced value.(i.e mode of this feature)
+vehicles$cylinders <- as.integer(substr(gsub("^\\D*", "", vehicles$cylinders), 1, 1))
+mode <- as.integer(names(sort(table(vehicles$cylinders), decreasing = TRUE))[1])
+vehicles$cylinders[is.na(vehicles$cylinders)] <- mode
+
+
+## --------------------------------------------------------------------------------------------------------------------------------------------------------------------
+head(vehicles)
+
+## --------------------------------------------------------------------------------------------------------------------------------------------------------------------
+colSums(is.na(vehicles)==TRUE)
+
+
+## --------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# Install and load necessary packages
+options(repos = "https://cran.r-project.org/")
+install.packages("ranger")
+library(caret)
+library(ranger)
+library(xgboost)
+library(rpart) 
+
+# Split the data into training and testing sets
+index <- createDataPartition(vehicles$price, p = 0.8, list = FALSE)
+train_data <- vehicles[index, ]
+test_data <- vehicles[-index, ]
+
+# Prepare the data for modeling
+x_train <- train_data[, -1]  # Exclude 'price' column
+y_train <- train_data$price
+x_test <- test_data[, -1]  # Exclude 'price' column
+y_test <- test_data$price
+
+# Convert to data frames
+x_train <- as.data.frame(x_train)
+x_test <- as.data.frame(x_test)
+
+# Convert factor columns to numeric
+convert_to_numeric <- function(df) {
+  df[] <- lapply(df, function(x) {
+    if (is.factor(x)) as.numeric(as.character(x)) else x
+  })
+  return(df)
+}
+
+x_train <- convert_to_numeric(x_train)
+x_test <- convert_to_numeric(x_test)
+
+# Remove non-numeric columns
+x_train <- x_train[, sapply(x_train, is.numeric)]
+x_test <- x_test[, sapply(x_test, is.numeric)]
+
+# Ensure y_train and y_test are numeric
+y_train <- as.numeric(y_train)
+y_test <- as.numeric(y_test)
+
+# Remove rows with NA values
+train_complete_cases <- complete.cases(x_train) & !is.na(y_train)
+test_complete_cases <- complete.cases(x_test) & !is.na(y_test)
+
+x_train <- x_train[train_complete_cases, ]
+y_train <- y_train[train_complete_cases]
+
+x_test <- x_test[test_complete_cases, ]
+y_test <- y_test[test_complete_cases]
+
+# Remove rows with infinite values
+x_train <- x_train[apply(x_train, 1, function(row) all(is.finite(row))), ]
+x_test <- x_test[apply(x_test, 1, function(row) all(is.finite(row))), ]
+
+# Combine x_train and y_train for ranger
+train_data <- cbind(x_train, price = y_train)
+
+# Train the random forest model using ranger
+model <- ranger(
+  formula = price ~ ., 
+  data = train_data, 
+  num.trees = 100, 
+  num.threads = 12,  # Use all 12 cores
+  importance = 'impurity'  # Optional: to calculate variable importance
+)
+# XGBoost model
+xgb_model <- xgboost(
+  data = as.matrix(x_train), 
+  label = y_train, 
+  nrounds = 100,
+  nthread = 12,  # Use all 12 cores
+  verbose = 0
+)
+
+# Decision Tree model
+dt_model <- rpart(
+  formula = price ~ ., 
+  data = train_data
+)
+
+# Make predictions
+# Make predictions
+rf_predictions <- predict(model, data = x_test)$predictions
+rf_rmse <- sqrt(mean((rf_predictions - y_test)^2))
+print(paste("Random Forest RMSE:", rf_rmse))
+
+
+# Make predictions
+xgb_predictions <- predict(xgb_model, as.matrix(x_test))
+xgb_rmse <- sqrt(mean((xgb_predictions - y_test)^2))
+print(paste("XGBoost RMSE:", xgb_rmse))
+
+# Make predictions
+dt_predictions <- predict(dt_model, newdata = x_test)
+dt_rmse <- sqrt(mean((dt_predictions - y_test)^2))
+print(paste("Decision Tree RMSE:", dt_rmse))
+
