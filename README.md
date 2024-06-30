@@ -1,11 +1,11 @@
 # Step-by-Step explanation of how data is handled and cleaned in vehicle dataset
 
-### Step 1: Reading and Exploring the Data
+> Step 1: Reading and Exploring the Data
 Read the Dataset: Import the data from a CSV file.
 
 Inspect the Data: Use commands like head() and tail() to look at the first and last few rows of the dataset. This helps in understanding the structure and contents of the data.
 
-### Step 2: Checking for Missing or Null Values
+> Step 2: Checking for Missing or Null Values
 Identify Missing Values: Check for null or empty cells in the dataset using functions that count missing values for each column.
 
 Visualize Missing Values: Plot a bar chart showing the count of missing values for each feature. This helps in understanding the extent of missing data and which columns are most affected.
